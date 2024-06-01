@@ -214,7 +214,7 @@ For the next rule:
 },
 ```
 
-By default, all style files, including those inside node_modules, are loaded using the type: css-module option [read more <a href="https://github.com/css-modules/css-modules?tab=readme-ov-file" target="_blank">here</a>], which prefixes the path to the style file before the class name.
+By default, all style files, including those inside node_modules, are loaded using the `type: css-module` option [read more <a href="https://github.com/css-modules/css-modules?tab=readme-ov-file" target="_blank">here</a>], which prefixes the path to the style file before the class name.
 
 For example, when importing the CSS for React Toastify:
 
@@ -242,7 +242,7 @@ new rspack.DefinePlugin(envVariables)
 
 That covers the main points from our rspack.config.js file.
 
-Next, we need to create a `bootstrap.tsx` file inside the src folder, where we need to copy the main.tsx code and then in the `main.tsx` we write this:
+Next, we need to create a `bootstrap.tsx` file inside the src folder, where we need to copy the `main.tsx` code and then in the `main.tsx` we write this:
 
 ```typescript
 import('./bootstrap');
@@ -285,7 +285,7 @@ Once all the basic configurations are sorted for both the host and remote, we th
 
 ### Runtime Remote Loading and Basic Routing
 
-We first install react-router-dom (or any other routing library of your choice):
+We first install `react-router-dom` (or any other routing library of your choice):
 
 ```bash
 npm i react-router-dom
@@ -311,9 +311,9 @@ init({
 import('./bootstrap');
 ```
 
-And that’s it for the main.tsx
+And that’s it for the `main.tsx`
 
-Now, let’s navigate to the app.tsx file in the host application, and lazy load the App from the remote application that we previously exposed, like this:
+Now, let’s navigate to the `app.tsx` file in the host application, and lazy load the `App` from the remote application that we previously exposed, like this:
 
 ```typescript
 // @ts-expect-error different type but it works as expected
