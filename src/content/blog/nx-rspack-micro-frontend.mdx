@@ -1,0 +1,391 @@
+---
+title: 'Micro Frontend Setup with Nx, Rspack, Module Federation 2.0 and React'
+description: 'The primary goal of this blog is to provide a comprehensive, step-by-step guide on setting up a micro frontend architecture using Nx, Rspack, Module Federation, and React.'
+pubDate: 'Jun 01 2024'
+heroImage: '/nx-rspack-micro-frontend.png'
+---
+
+The primary goal of this blog is to provide a comprehensive, step-by-step guide on setting up a micro frontend architecture using Nx, Rspack, Module Federation, and React, and to explain how we leveraged it in a recent project.
+
+## Overview
+> Module Federation is an architectural pattern for the decentralization of JavaScript applications (similar to microservices on the server-side). It allows you to share code and resources among multiple JavaScript applications (or micro-frontends). Click [here](https://module-federation.io/guide/start/index.html) to learn more about Module Federation 2.0
+
+> Nx is a powerful open-source build system that provides tools and techniques for enhancing developer productivity, optimizing CI performance, and maintaining code quality. Click [here](https://nx.dev/getting-started/why-nx) to learn more
+
+> Rspack is a Rust-based web bundler, compatible with the architecture and ecosystem of webpack. The the build speed is extremely fast, bringing you the ultimate development experience.
+
+We chose Rspack because of the Module Federation 2.0 support, offering better performance compared to Webpack. Although our architecture requires polyrepo support, which contrasts with Nx’s monorepo focus, we still opted to use Nx for its powerful CLI, build, linting, and caching features.
+
+## Setup
+
+1. Open terminal, and setup the host application:
+   
+   ```bash
+   npx create-nx-workspace@latest host --preset=react-standalone --bundler=rspack
+   ```
+
+2. Select a stylesheet format, we selected SASS (.scss) and proceed. This will setup the host application for you.
+
+3. Install the following packages for host application:
+
+    ```bash
+    npm i @module-federation/enhanced
+    ```
+
+    We will be using `@module-federation/enhanced`, the new Module Federation 2.0 library, to set up our micro frontend architecture.
+      
+      ```bash
+      npm i -D @module-federation/runtime process sass
+      ```
+        
+
+    We will use the `@module-federation/runtime` package to load remote applications at runtime instead of build time. And the process package to use the “browser” member, allowing us to use the process variable in a browser environment.
+
+4. Similarly, setup a remote application:
+
+    ```bash
+    npx create-nx-workspace@latest remote --preset=react-standalone --bundler=rspack
+    ```
+
+5. Simply follow the same steps as in point 3, and you will have created the remote application.
+
+6. Install the following package for remote application:
+
+    ```bash
+    npm i @module-federation/enhanced
+    ```
+
+    ```bash
+    npm i -D process sass
+    ```
+    
+> Note: There’s an issue with *@nx/rspack* latest version, where you can’t load sass module so please use *18.0.6* version for both host and remote application.
+
+7. Open both the host and remote applications in your preferred editor.
+
+## Configuration
+
+### Host Application
+
+Create a `modulefederation.config.js` file at the root of your folder. The configuration should resemble the following:
+
+```javascript
+const { dependencies } = require('./package.json'); 
+
+module.exports = {
+  name: 'mf_host',
+  shared: {
+    react: {
+      singleton: true,
+      eager: true,
+      requiredVersion: dependencies['react'],
+    },
+    'react-dom': {
+      singleton: true,
+      eager: true,
+      requiredVersion: dependencies['react-dom'],
+    },
+    // Other shared dependencies
+  }
+};
+```
+
+> Note: We don’t have a remote object because, as mentioned before, we will be loading them at runtime rather than at build time.
+
+Now, regarding the `rspack.config.js` configuration, it closely resembles webpack since Rspack is compatible with the webpack ecosystem.
+
+Here’s how our rspack.config.js would look like:
+
+```javascript
+const { composePlugins, withNx, withReact } = require('@nx/rspack');
+const { ModuleFederationPlugin } = require('@module-federation/enhanced/rspack');
+const mfConfig = require('./modulefederation.config');
+const path = require('path');
+const rspack = require('@rspack/core');
+
+const envVariables = {};
+
+for (let key in process.env) {
+  envVariables[`process.env.${key}`] = JSON.stringify(process.env[key]);
+}
+
+module.exports = composePlugins(withNx(), withReact(), (baseConfig) => {
+  const config = {
+    ...baseConfig,
+    output: {
+      publicPath: '/',
+      filename: '[name].[contenthash].js',
+    },
+    devServer: {
+      ...baseConfig.devServer,
+      historyApiFallback: true,
+      port: 4200,
+      hot: false,
+    },
+    resolve: {
+      alias: {
+        src: path.resolve(__dirname, './src'),
+      },
+      extensions: ['.js', '.ts', '.tsx'],
+    },
+    module: {
+      rules: [
+        ...baseConfig.module.rules,
+        {
+          test: /\.(png|jpe?g|gif|svg)$/i,
+          type: 'asset/resource',
+        },
+        {
+          test: /\.css$/,
+          type: 'css',
+          exclude: '/node_modules/',
+        },
+      ],
+    },
+    plugins: [
+      ...baseConfig.plugins,
+      new ModuleFederationPlugin({ ...mfConfig }),
+      new rspack.ProvidePlugin({
+        process: [require.resolve('process/browser')],
+      }),
+      new rspack.DefinePlugin(envVariables)
+    ],
+  };
+  return config;
+});
+```
+
+Breaking down the most important parts,
+
+If you have a setup where you’re fetching variables from `.env.local`, you would need to do this first:
+
+```javascript
+const envVariables = {};
+  
+for (let key in process.env) {
+  envVariables[`process.env.${key}`] = JSON.stringify(process.env[key]);
+}
+```
+
+If you want to use absolute paths for your imports, you can do so by following this step, which is similar to webpack.
+
+```javascript
+resolve: {
+  alias: {
+    src: path.resolve(__dirname, './src'),
+  },
+  extensions: ['.js', '.ts', '.tsx'],
+},
+```
+
+Additionally, we need to add these to the `compilerOptions` in the `tsconfig.json` file:
+
+```json
+"paths": {
+  "*": ["./@mf-types/*"],
+  "src/*": ["./src/*"]
+},
+```
+
+The first configuration is essentially for the @mf-types folder generated by the new Module Federation 2.0 for typings. You can read more about it [here](https://module-federation.io/configure/dts.html#generatetypes).
+
+Now, coming to the rules,
+
+```javascript
+{
+  test: /\.(png|jpe?g|gif|svg)$/i,
+  type: 'asset/resource',
+},
+```
+
+This mainly covers the import of images directly into your React application like this:
+
+```typescript
+import image from 'path/to/your/image.svg`;
+```
+
+For the next rule:
+
+```javascript
+{
+  test: /\.css$/,
+  type: 'css',
+  exclude: '/node_modules/',
+},
+```
+
+By default, all style files, including those inside node_modules, are loaded using the type: css-module option [read more [here](https://github.com/css-modules/css-modules?tab=readme-ov-file)], which prefixes the path to the style file before the class name.
+
+For example, when importing the CSS for React Toastify:
+
+```typescript
+import 'react-toastify/dist/ReactToastify.css';
+```
+
+This won’t work with the default setup, and we need to load it as a css file instead.
+
+Now coming to the plugins:
+
+```javascript
+new rspack.ProvidePlugin({
+  process: [require.resolve('process/browser')],
+}),
+```
+
+We make the process variable accessible in the browser.
+
+Finally, to expose the `envVariables` object we set up earlier, to our application, we achieve it through this plugin:
+
+```javascript
+new rspack.DefinePlugin(envVariables)
+```
+
+That covers the main points from our rspack.config.js file.
+
+Next, we need to create a `bootstrap.tsx` file inside the src folder, where we need to copy the main.tsx code and then in the `main.tsx` we write this:
+
+```typescript
+import('./bootstrap');
+```
+
+### Remote Application
+
+Similarly, create a `modulefederation.config.js` file at the root of your folder. The configuration should resemble the following:
+
+```javascript
+const { dependencies } = require('./package.json');
+    
+module.exports = {
+  name: 'mf_remote',
+  exposes: {
+    './App': './src/app/app'
+  },
+  filename: 'remoteEntry.js',
+  shared: {
+    react: {
+      singleton: true,
+      requiredVersion: dependencies['react'],
+    },
+    'react-dom': {
+      singleton: true,
+      requiredVersion: dependencies['react-dom'],
+    },
+    // Other shared dependencies
+  },
+};
+```
+
+We just expose our `app.tsx`, where we would define our routing.
+
+The `rspack.config.js` is same as the host application, except the port would be 4201, or whichever port you prefer, and publicPath will be auto.
+
+The same changes to the `bootstrap.tsx` file need to be added in the remote application as well.
+
+Once all the basic configurations are sorted for both the host and remote, we then configure how we would load the remotes at runtime instead of build time.
+
+### Runtime Remote Loading and Basic Routing
+
+We first install react-router-dom (or any other routing library of your choice):
+
+```bash
+npm i react-router-dom
+```
+
+Then we setup the dynamic loading of the remote application in the main.tsx:
+
+```typescript
+import { init } from '@module-federation/runtime';
+
+init({
+  name: 'mf_host',
+  remotes: [
+    {
+      name: 'mf_remote',
+      // Adding version to invalidate cache
+      entry: `https://localhost:4201/remoteEntry.js?v=${+Date.now()}`,
+    },
+    // Other remote entries
+  ]
+});
+
+import('./bootstrap');
+```
+
+And that’s it for the main.tsx
+
+Now, let’s navigate to the app.tsx file in the host application, and lazy load the App from the remote application that we previously exposed, like this:
+
+```typescript
+// @ts-expect-error different type but it works as expected
+const RemoteApp = lazy(async () => await loadRemote('mf_remote/App'));
+```
+
+The rest of the file would look like this:
+
+```tsx
+import { loadRemote } from '@module-federation/runtime';
+import { lazy } from 'react';
+import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+// @ts-expect-error different type but it works as expected
+const RemoteApp = lazy(async () => await loadRemote('mf_remote/App'));
+
+export function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/"
+          element={<h1>Hello</h1>}
+        />
+        <Route path="/remote/*"
+          element={<RemoteApp />}
+        />
+      </Routes>
+    </Router>
+  );
+}
+
+export default App;
+```
+
+The route setup in the remote application will look like this:
+
+```tsx
+import { Route, Routes } from 'react-router-dom';
+import Home from './pages/home/home';
+
+export function App() {
+  return (
+    <Routes>
+      <Route path="/"
+        element={<Home />}
+      />
+    </Routes>
+  );
+}
+
+export default App;
+```
+
+Once you have this setup, you can run the following command for both the host and remote:
+
+```bash
+nx serve
+```
+
+Then, navigate to [http://localhost:4200/remote](http://localhost:4200/remote) in your browser to see the home page from your remote application.
+
+![](https://cdn-images-1.medium.com/max/5762/1*DvhnvPXz9iZM1WUr-Y9Nbg.png)
+
+
+That’s it! You now have a micro frontend setup with a host and one remote application. You can add more remote applications and start developing your product.
+
+Here are the links to the host and remote applications that I have set up with all of the above configurations. Feel free to clone them and try them out locally:
+
+
+[**GitHub - soumyanildas/nx-rspack-host**](https://github.com/soumyanildas/nx-rspack-host)
+
+[**GitHub - soumyanildas/nx-rspack-remote**](https://github.com/soumyanildas/nx-rspack-remote)
+
+## That’s it folks.
+
+Thank you for reading. I appreciate the time you’ve taken to go through this post. I hope you find it useful. Stay tuned for more content, and happy coding!
