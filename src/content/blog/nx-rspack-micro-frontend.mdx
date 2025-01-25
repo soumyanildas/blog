@@ -293,6 +293,8 @@ We first install `react-router-dom` (or any other routing library of your choice
 npm i react-router-dom
 ```
 
+Don't forget to add react-router-dom as part of modulefederation.config.js so that it's shared between host and remote applications.
+
 Then we setup the dynamic loading of the remote application in the main.tsx:
 
 ```typescript
