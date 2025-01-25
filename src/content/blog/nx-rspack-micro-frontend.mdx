@@ -115,6 +115,8 @@ module.exports = composePlugins(withNx(), withReact(), (baseConfig) => {
     output: {
       publicPath: '/',
       filename: '[name].[contenthash].js',
+      chunkFilename: '[name].[contenthash].bundle.js',
+      clean: true,
     },
     devServer: {
       ...baseConfig.devServer,
