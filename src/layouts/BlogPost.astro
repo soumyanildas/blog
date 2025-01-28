@@ -8,7 +8,7 @@ import CommentSection from "../components/CommentSection.astro";
 
 type Props = CollectionEntry<"blog">["data"];
 
-const { title, description, pubDate, heroImage } = Astro.props;
+const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
 ---
 
 <html lang="en">
@@ -65,6 +65,7 @@ URL: https://flowbite.com/docs/components/typography/
 						prose-a:text-cyan-700 prose-img:rounded-xl
 						">
 						<slot />
+            Last Updated At: <FormattedDate date={updatedDate} />
 					</div>
           <CommentSection />
         </article>
